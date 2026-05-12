@@ -70,8 +70,8 @@ def top_score(a):
     return (a["roas"] or 0) * 10 + a["ob_ctr"]
 
 def bot_score(a):
-    roas = a["roas"] if a["roas"] is not None else -1
-    return roas - a["spend"] / 100_000
+    roas = a["roas"] or 0
+    return -(a["spend"] * (1 - roas))  # 손실액 = 지출 × (1 - ROAS), 클수록 하위
 
 top5 = sorted(parsed, key=top_score, reverse=True)[:5]
 bot5 = sorted(parsed, key=bot_score)[:5]
@@ -300,19 +300,20 @@ blocks.append(notion_table(
 ))
 
 for i, a in enumerate(bot5, 1):
-    issues = []
+    roas_val = a["roas"] or 0
+    loss = a["spend"] * (1 - roas_val)
+    issues = [f"추정 손실액 ₩{loss:,.0f} (지출 ₩{a['spend']:,.0f}, ROAS {a['roas']:.2f}x 기준)" if a["roas"] else f"추정 손실액 ₩{loss:,.0f} (지출 ₩{a['spend']:,.0f}, 전환 미발생)"]
     if avg_cpm > 0 and a["cpm"] > avg_cpm * 1.5:
-        issues.append(f"CPM ₩{a['cpm']:,.0f} (평균 ₩{avg_cpm:,.0f} 대비 과다)")
+        issues.append(f"CPM ₩{a['cpm']:,.0f} (평균 ₩{avg_cpm:,.0f} 대비 고비용)")
     if avg_ob_ctr > 0 and a["ob_ctr"] < avg_ob_ctr * 0.5:
-        issues.append(f"OB-CTR {a['ob_ctr']:.2f}% (평균 미달)")
+        issues.append(f"OB-CTR {a['ob_ctr']:.2f}% (평균 미달 — 소재 반응 낮음)")
     if not a["roas"]:
         issues.append("전환 미발생 — 크리에이티브 or 타겟팅 재검토")
     elif a["roas"] < 1:
         issues.append(f"ROAS {a['roas']:.2f}x — 손실 구간")
     action = "즉시 중단" if a["spend"] > 50_000 and (not a["roas"] or a["roas"] < 0.5) else "예산 축소 후 관찰"
-    body = ("문제: " + " / ".join(issues)) if issues else f"지출 ₩{a['spend']:,.0f}"
     blocks.append(h3(f"하위{i}. {a['name'][:50]}"))
-    blocks.append(callout(body + f"\n→ {action}", "🔴"))
+    blocks.append(callout(" / ".join(issues) + f"\n→ {action}", "🔴"))
 
 blocks.append(divider())
 
