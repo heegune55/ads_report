@@ -18,8 +18,14 @@ jobs:
       - name: 패키지 설치
         run: pip install requests
 
-      - name: 보고서 생성
+      - name: 일간 보고서 생성
         run: python report.py
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+
+      - name: 위클리 보고서 생성
+        run: python weekly_report.py
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
