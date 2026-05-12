@@ -1,11 +1,9 @@
 import requests, json, datetime, os
-import anthropic
 
 META_TOKEN = os.environ["META_ACCESS_TOKEN"]
 META_ACCOUNT = "act_3431020723842735"
 NOTION_TOKEN = os.environ["NOTION_TOKEN"]
 NOTION_PARENT = "12fb99f5082080e5a78ac8591f0fbae4"
-ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
 
 yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -40,7 +38,7 @@ def ga(lst, t):
 
 parsed = []
 for ad in ads:
-    al = ad.get("actions", [])
+    al  = ad.get("actions", [])
     obl = ad.get("outbound_clicks_ctr", [])
     rl  = ad.get("purchase_roas", [])
     avl = ad.get("action_values", [])
@@ -72,48 +70,46 @@ def score(a):
 ranked = sorted(parsed, key=score, reverse=True)
 top5, bot5 = ranked[:5], ranked[-5:]
 
-# ── 3. Claude API로 분석 생성 ─────────────────────────────────────────────────
-print("[2/3] Claude API로 분석 생성...")
-client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+# ── 3. 규칙 기반 분석 생성 ───────────────────────────────────────────────────
+total_spend = sum(a["spend"] for a in parsed)
+total_roas  = [a["roas"] for a in parsed if a["roas"]]
+avg_roas    = sum(total_roas) / len(total_roas) if total_roas else 0
+avg_cpm     = sum(a["cpm"] for a in parsed) / len(parsed) if parsed else 0
+avg_ob_ctr  = sum(a["ob_ctr"] for a in parsed) / len(parsed) if parsed else 0
+zero_roas   = [a for a in parsed if not a["roas"] or a["roas"] == 0]
+high_spend_no_roas = [a for a in parsed if a["spend"] > 10000 and (not a["roas"] or a["roas"] < 1)]
 
-prompt = f"""{yesterday} 기준 Meta 광고 소재(Ad) 레벨 성과 데이터입니다.
+retro_lines = [
+    f"총 {len(parsed)}개 소재 분석 | 전체 지출 ₩{total_spend:,.0f} | 평균 CPM ₩{avg_cpm:,.0f} | 평균 아웃바운드CTR {avg_ob_ctr:.2f}%",
+    f"평균 ROAS {avg_roas:.2f}x — " + ("전반적으로 양호한 수준입니다." if avg_roas >= 2 else "개선이 필요한 수준입니다."),
+]
+if top5:
+    t = top5[0]
+    retro_lines.append(f"최고 성과 소재: {t['name'][:40]} (CPM ₩{t['cpm']:,.0f}, OBC {t['ob_ctr']:.2f}%{f', ROAS {t[\"roas\"]:.2f}x' if t['roas'] else ''})")
+if zero_roas:
+    retro_lines.append(f"ROAS 미발생 소재 {len(zero_roas)}개 — 크리에이티브 또는 타겟팅 재검토 필요.")
+if any(a["v3s"] for a in parsed):
+    avg_v3s = sum(a["v3s"] for a in parsed if a["v3s"]) / len([a for a in parsed if a["v3s"]])
+    retro_lines.append(f"동영상 소재 평균 3초 재생시간 {avg_v3s:.1f}초 — {'도입부 훅이 효과적입니다.' if avg_v3s >= 3 else '도입부 훅 강화가 필요합니다.'}")
 
-전체 소재:
-{json.dumps([{"name":a["name"],"spend":a["spend"],"cpm":a["cpm"],"ob_ctr":a["ob_ctr"],"roas":a["roas"],"v3s":a["v3s"],"cvr":a["cvr"]} for a in parsed], ensure_ascii=False)}
+todo_lines = []
+for a in bot5:
+    if a["spend"] > 5000 and (not a["roas"] or a["roas"] < 0.5):
+        todo_lines.append(f"중단 검토: {a['name'][:40]} (지출 ₩{a['spend']:,.0f}, ROAS {'N/A' if not a['roas'] else f'{a[\"roas\"]:.2f}x'})")
+if high_spend_no_roas:
+    todo_lines.append(f"ROAS 1x 미만 고지출 소재 {len(high_spend_no_roas)}개 예산 축소 또는 중단 검토")
+if top5 and top5[0]["roas"] and top5[0]["roas"] >= 2:
+    todo_lines.append(f"상위 소재 예산 증액 검토: {top5[0]['name'][:40]}")
+if not todo_lines:
+    todo_lines.append("현재 즉시 조치가 필요한 소재 없음 — 지속 모니터링")
 
-상위 5개 소재:
-{json.dumps([{"name":a["name"],"cpm":a["cpm"],"ob_ctr":a["ob_ctr"],"roas":a["roas"],"v3s":a["v3s"]} for a in top5], ensure_ascii=False)}
-
-하위 5개 소재:
-{json.dumps([{"name":a["name"],"cpm":a["cpm"],"ob_ctr":a["ob_ctr"],"roas":a["roas"],"v3s":a["v3s"]} for a in bot5], ensure_ascii=False)}
-
-아래 형식 그대로 작성하세요. 구체적인 수치를 근거로 사용하세요.
-
-[회고]
-소재 전반 성과 패턴과 인사이트를 3~5문장으로 서술.
-
-[To-Do]
-- 즉시 조치 항목 (하위 소재 중단, 예산 재배분 등)
-
-[Next Action]
-- 중장기 소재 전략 액션 아이템
-"""
-
-msg = client.messages.create(
-    model="claude-sonnet-4-6",
-    max_tokens=1024,
-    messages=[{"role": "user", "content": prompt}],
-)
-analysis = msg.content[0].text
-
-retro, todo, next_act, cur = [], [], [], None
-for line in analysis.split("\n"):
-    if "[회고]" in line:         cur = "retro"
-    elif "[To-Do]" in line:     cur = "todo"
-    elif "[Next Action]" in line: cur = "next"
-    elif cur == "retro" and line.strip(): retro.append(line.strip())
-    elif cur == "todo"  and line.strip(): todo.append(line.strip().lstrip("-• "))
-    elif cur == "next"  and line.strip(): next_act.append(line.strip().lstrip("-• "))
+next_lines = [
+    f"상위 소재({top5[0]['name'][:30] if top5 else ''}) 컨셉·포맷 기반 신규 소재 1~2개 제작",
+    "CPM 낮고 아웃바운드CTR 높은 소재 위주로 예산 집중 운영",
+    "하위 소재 공통 패턴 분석 후 크리에이티브 방향 개선",
+]
+if any(a["v3s"] for a in parsed):
+    next_lines.append("3초 재생시간 높은 동영상 소재의 훅 패턴을 다른 소재에 적용")
 
 # ── 4. Notion 블록 구성 ───────────────────────────────────────────────────────
 def h2(c):  return {"object":"block","type":"heading_2","heading_2":{"rich_text":[{"type":"text","text":{"content":str(c)[:1999]}}]}}
@@ -151,16 +147,16 @@ for i, a in enumerate(bot5, 1):
     blocks.append(blt(f"CPM: ₩{a['cpm']:,.0f} | 아웃바운드CTR: {a['ob_ctr']:.2f}% | ROAS: {rs}"))
 
 blocks.append(h2("💡 소재 전반 회고"))
-for line in retro: blocks.append(p(line))
+for line in retro_lines: blocks.append(p(line))
 
 blocks.append(h2("✅ To-Do"))
-for line in todo: blocks.append(blt(line))
+for line in todo_lines: blocks.append(blt(line))
 
 blocks.append(h2("🚀 Next Action"))
-for line in next_act: blocks.append(blt(line))
+for line in next_lines: blocks.append(blt(line))
 
 # ── 5. Notion 페이지 생성 ─────────────────────────────────────────────────────
-print("[3/3] Notion 페이지 생성...")
+print("[2/3] Notion 페이지 생성...")
 nh = {"Authorization": f"Bearer {NOTION_TOKEN}",
       "Notion-Version": "2022-06-28", "Content-Type": "application/json"}
 
@@ -176,13 +172,14 @@ page_id = page["id"]
 print(f"  -> 페이지 생성: {page.get('url')}")
 
 for i in range(0, len(blocks), 90):
+    chunk = blocks[i:i+90]
     res = requests.patch(
         f"https://api.notion.com/v1/blocks/{page_id}/children",
-        headers=nh, json={"children": blocks[i:i+90]}
+        headers=nh, json={"children": chunk}
     ).json()
     if "error" in res:
         print(f"  -> 블록 추가 실패 (chunk {i}): {res}")
     else:
-        print(f"  -> 블록 {i}~{i+len(blocks[i:i+90])} 추가 완료")
+        print(f"  -> 블록 {i}~{i+len(chunk)} 추가 완료")
 
 print(f"\n✅ 완료! {page.get('url')}")
