@@ -96,7 +96,8 @@ if any(a["v3s"] for a in parsed):
 todo_lines = []
 for a in bot5:
     if a["spend"] > 5000 and (not a["roas"] or a["roas"] < 0.5):
-        todo_lines.append(f"중단 검토: {a['name'][:40]} (지출 ₩{a['spend']:,.0f}, ROAS {'N/A' if not a['roas'] else f'{a[\"roas\"]:.2f}x'})")
+        roas_todo = f"{a['roas']:.2f}x" if a['roas'] else "N/A"
+        todo_lines.append(f"중단 검토: {a['name'][:40]} (지출 ₩{a['spend']:,.0f}, ROAS {roas_todo})")
 if high_spend_no_roas:
     todo_lines.append(f"ROAS 1x 미만 고지출 소재 {len(high_spend_no_roas)}개 예산 축소 또는 중단 검토")
 if top5 and top5[0]["roas"] and top5[0]["roas"] >= 2:
