@@ -92,8 +92,8 @@ def parse(ad):
         "is_video":   vavg is not None,
     }
 
-curr = [a for a in (parse(r) for r in curr_raw) if a["spend"] >= SPEND_MIN]
-prev = [a for a in (parse(r) for r in prev_raw) if a["spend"] >= SPEND_MIN]
+curr = [a for a in (parse(r) for r in curr_raw) if a["spend"] >= SPEND_MIN and "KB" in a["name"]]
+prev = [a for a in (parse(r) for r in prev_raw) if a["spend"] >= SPEND_MIN and "KB" in a["name"]]
 
 # ── 집계 ─────────────────────────────────────────────────────────────────────
 def agg(ads):

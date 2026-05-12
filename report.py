@@ -63,8 +63,8 @@ for ad in ads:
         "purchases":   pur,
     })
 
-parsed = [a for a in all_ads if a["spend"] >= SPEND_MIN]
-print(f"  -> 지출 ₩{SPEND_MIN:,} 이상 소재: {len(parsed)}개")
+parsed = [a for a in all_ads if a["spend"] >= SPEND_MIN and "KB" in a["name"]]
+print(f"  -> KB 소재 중 지출 ₩{SPEND_MIN:,} 이상: {len(parsed)}개")
 
 # ── 3. 상위 / 하위 선정 ──────────────────────────────────────────────────────
 def top_score(a):
@@ -291,7 +291,7 @@ blocks += [
     callout(
         f"총 지출 ₩{total_spend:,.0f}  |  구매 {total_pur:.0f}건  |  전환값 ₩{total_pv:,.0f}  |  "
         f"블렌드 ROAS {blend_roas:.2f}x  |  평균 CPM ₩{avg_cpm:,.0f}  |  평균 OB-CTR {avg_ob_ctr:.2f}%  |  "
-        f"분석 소재 {len(parsed)}개 (전체 {len(all_ads)}개 중 ₩{SPEND_MIN:,} 이상)",
+        f"분석 소재 {len(parsed)}개 (KB 소재 / ₩{SPEND_MIN:,} 이상)",
         "📌"
     ),
     divider(),
