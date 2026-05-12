@@ -85,7 +85,8 @@ retro_lines = [
 ]
 if top5:
     t = top5[0]
-    retro_lines.append(f"최고 성과 소재: {t['name'][:40]} (CPM ₩{t['cpm']:,.0f}, OBC {t['ob_ctr']:.2f}%{f', ROAS {t[\"roas\"]:.2f}x' if t['roas'] else ''})")
+    roas_str = f", ROAS {t['roas']:.2f}x" if t['roas'] else ""
+    retro_lines.append(f"최고 성과 소재: {t['name'][:40]} (CPM ₩{t['cpm']:,.0f}, OBC {t['ob_ctr']:.2f}%{roas_str})")
 if zero_roas:
     retro_lines.append(f"ROAS 미발생 소재 {len(zero_roas)}개 — 크리에이티브 또는 타겟팅 재검토 필요.")
 if any(a["v3s"] for a in parsed):
