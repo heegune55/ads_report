@@ -29,10 +29,7 @@ FIELDS = ",".join([
     "ad_id","ad_name","impressions","reach","frequency",
     "spend","cpm","ctr","outbound_clicks_ctr","cpc",
     "actions","action_values","purchase_roas","post_engagement",
-    "video_play_actions","video_10_sec_watched_actions",
-    "video_30_sec_watched_actions","video_avg_time_watched_actions",
-    "video_p25_watched_actions","video_p50_watched_actions",
-    "video_p75_watched_actions","video_p95_watched_actions",
+    "video_avg_time_watched_actions",
 ])
 
 def fetch(d_since, d_until):
@@ -75,16 +72,9 @@ def parse(ad):
     rl   = ad.get("purchase_roas", [])
     avl  = ad.get("action_values", [])
     pur  = ga(al, "purchase") or 0
-    clk  = ga(al, "link_click") or 1
     spd  = float(ad.get("spend", 0) or 0)
-    plays= fv(ad.get("video_play_actions", []))
-    v10  = fv(ad.get("video_10_sec_watched_actions", []))
-    v30  = fv(ad.get("video_30_sec_watched_actions", []))
-    p25  = fv(ad.get("video_p25_watched_actions", []))
-    p50  = fv(ad.get("video_p50_watched_actions", []))
-    p75  = fv(ad.get("video_p75_watched_actions", []))
-    p95  = fv(ad.get("video_p95_watched_actions", []))
-    vavg = fv(ad.get("video_avg_time_watched_actions", []))
+    vavg_raw = fv(ad.get("video_avg_time_watched_actions", []))
+    vavg = vavg_raw if vavg_raw > 0 else None
     return {
         "name":       ad.get("ad_name", ""),
         "impressions":float(ad.get("impressions", 0) or 0),
@@ -98,15 +88,8 @@ def parse(ad):
         "pv":         ga(avl, "purchase"),
         "purchases":  pur,
         "cpa":        spd / pur if pur > 0 else None,
-        "plays":      plays,
-        "v10":        v10,  "v30": v30, "vavg": vavg if vavg > 0 else None,
-        "p25": p25, "p50": p50, "p75": p75, "p95": p95,
-        "is_video":   plays > 0,
-        "dropout10":  (1 - v10 / plays) * 100 if plays > 0 else None,
-        "ret25":      p25 / plays * 100 if plays > 0 else None,
-        "ret50":      p50 / plays * 100 if plays > 0 else None,
-        "ret75":      p75 / plays * 100 if plays > 0 else None,
-        "ret95":      p95 / plays * 100 if plays > 0 else None,
+        "vavg":       vavg,
+        "is_video":   vavg is not None,
     }
 
 curr = [a for a in (parse(r) for r in curr_raw) if a["spend"] >= SPEND_MIN]
@@ -116,12 +99,12 @@ prev = [a for a in (parse(r) for r in prev_raw) if a["spend"] >= SPEND_MIN]
 def agg(ads):
     if not ads:
         return dict(n=0, spend=0, pv=0, purchases=0, blend_roas=0,
-                    cpa=None, avg_ob_ctr=0, avg_cpm=0, avg_dropout=None, n_fatigue=0)
+                    cpa=None, avg_ob_ctr=0, avg_cpm=0, avg_vavg=None, n_fatigue=0)
     spd  = sum(a["spend"] for a in ads)
     pv   = sum(a["pv"] for a in ads if a["pv"])
     pur  = sum(a["purchases"] for a in ads)
     vid  = [a for a in ads if a["is_video"]]
-    do_l = [a["dropout10"] for a in vid if a["dropout10"] is not None]
+    vavg_l = [a["vavg"] for a in vid if a["vavg"] is not None]
     return {
         "n":           len(ads),
         "spend":       spd,
@@ -131,7 +114,7 @@ def agg(ads):
         "cpa":         spd / pur if pur else None,
         "avg_ob_ctr":  sum(a["ob_ctr"] for a in ads) / len(ads),
         "avg_cpm":     sum(a["cpm"] for a in ads) / len(ads),
-        "avg_dropout": sum(do_l) / len(do_l) if do_l else None,
+        "avg_vavg":    sum(vavg_l) / len(vavg_l) if vavg_l else None,
         "n_fatigue":   sum(1 for a in ads if a["frequency"] >= 3),
     }
 
@@ -171,17 +154,11 @@ def fagg(lst):
 fmt_stats  = {f: fagg(v) for f, v in fmt_map.items()}
 fmt_sorted = sorted(fmt_stats.items(), key=lambda x: x[1]["blend_roas"], reverse=True)
 
-# ── 동영상 훅 분석 ────────────────────────────────────────────────────────────
-vid_curr   = [a for a in curr if a["is_video"]]
-vid_do     = sorted([a for a in vid_curr if a["dropout10"] is not None], key=lambda x: x["dropout10"])
-hook_strong = vid_do[:3]
-hook_weak   = vid_do[-3:] if len(vid_do) >= 3 else []
-
-def avg_field(ads, field):
-    vals = [a[field] for a in ads if a.get(field) is not None]
-    return sum(vals) / len(vals) if vals else None
-
-ret = {k: avg_field(vid_curr, k) for k in ["ret25","ret50","ret75","ret95"]}
+# ── 동영상 훅 분석 (평균 시청 시간 기준) ──────────────────────────────────────
+vid_curr    = [a for a in curr if a["is_video"]]
+vid_with_vavg = sorted([a for a in vid_curr if a["vavg"] is not None], key=lambda x: x["vavg"], reverse=True)
+hook_strong = vid_with_vavg[:3]
+hook_weak   = list(reversed(vid_with_vavg[-3:])) if len(vid_with_vavg) >= 3 else []
 
 # ── 피로도 ───────────────────────────────────────────────────────────────────
 fatigue_ads  = sorted([a for a in curr if a["frequency"] >= 3],
@@ -211,14 +188,14 @@ def interp_cpa():
     note  = "단가 또는 전환율 악화. 랜딩·오퍼 점검 필요." if delta > 0 else "전환 효율 개선. 현 구조 유지 권장."
     return f"CPA ₩{P['cpa']:,.0f} → ₩{C['cpa']:,.0f} ({dir_}). {note}"
 
-def interp_dropout():
-    if not C["avg_dropout"] or not P["avg_dropout"]: return ""
-    delta = C["avg_dropout"] - P["avg_dropout"]
-    dir_  = "악화" if delta > 0 else "개선"
-    note  = "도입 3초 이내 훅 강도 점검 필요." if delta > 2 else "소재·타겟팅 정교화 효과." if delta < -2 else "전주 수준 유지."
-    return f"동영상 10초 이탈률 {P['avg_dropout']:.1f}% → {C['avg_dropout']:.1f}% ({dir_}). {note}"
+def interp_vavg():
+    if not C["avg_vavg"] or not P["avg_vavg"]: return ""
+    delta = C["avg_vavg"] - P["avg_vavg"]
+    dir_  = "개선" if delta > 0 else "하락"
+    note  = "훅 및 초반 메시지 소구력 강화 효과." if delta > 0 else "도입부 훅 구조 점검 필요."
+    return f"동영상 평균 시청 시간 {P['avg_vavg']:.1f}초 → {C['avg_vavg']:.1f}초 ({dir_}). {note}"
 
-summary_narrative = " ".join(filter(None, [interp_roas(), interp_cpa(), interp_dropout()])) or "전주 대비 주요 지표 변화 제한적."
+summary_narrative = " ".join(filter(None, [interp_roas(), interp_cpa(), interp_vavg()])) or "전주 대비 주요 지표 변화 제한적."
 
 def fmt_narrative():
     if len(fmt_sorted) < 2: return "포맷 다양성 부족으로 비교 불가."
@@ -261,12 +238,12 @@ if len(fmt_sorted) >= 2:
     )
 
 if hook_strong and hook_weak:
-    avg_s = sum(a["dropout10"] for a in hook_strong) / len(hook_strong)
-    avg_w = sum(a["dropout10"] for a in hook_weak) / len(hook_weak)
+    avg_s = sum(a["vavg"] for a in hook_strong) / len(hook_strong)
+    avg_w = sum(a["vavg"] for a in hook_weak) / len(hook_weak)
     _, sfmt = pname(hook_strong[0]["name"])
     insights.append(
-        f"훅 강도 양극화: 저이탈 평균 {avg_s:.1f}% vs 고이탈 {avg_w:.1f}%. "
-        f"저이탈 소재 '{sfmt}' 포맷 집중 — 해당 포맷의 도입부 구성 방식을 고이탈 소재에 이식 필요."
+        f"훅 강도 양극화: 고시청 평균 {avg_s:.1f}초 vs 저시청 {avg_w:.1f}초. "
+        f"고시청 소재 '{sfmt}' 포맷 집중 — 해당 포맷의 도입부 구성 방식을 저시청 소재에 이식 필요."
     )
 
 if replace_list:
@@ -277,12 +254,14 @@ if replace_list:
         f"피로 누적으로 CPM 추가 상승 및 ROAS 추가 하락 예상. 즉시 교체 필요."
     )
 
-if ret.get("ret25") and ret.get("ret50"):
-    r25, r50 = ret["ret25"], ret["ret50"]
-    if r25 < 50:
-        insights.append(f"동영상 유지율 25% 구간 {r25:.0f}% — 초반 이탈 집중. 첫 3초 훅 교체 시 유지율 15~20%p 개선 가능.")
-    elif r50 < r25 * 0.55:
-        insights.append(f"동영상 유지율 25→50% 급감 ({r25:.0f}%→{r50:.0f}%) — 중반 콘텐츠 전환 실패. 중간 CTA 또는 긴장감 유지 장치 추가 필요.")
+if C["avg_vavg"] and P["avg_vavg"]:
+    delta_vavg = C["avg_vavg"] - P["avg_vavg"]
+    if abs(delta_vavg) > 1:
+        dir_v = "증가" if delta_vavg > 0 else "감소"
+        note_v = "훅 소구력 강화 — 현 도입부 구조 유지 권장." if delta_vavg > 0 else "도입부 훅 교체 실험 필요."
+        insights.append(
+            f"동영상 평균 시청 시간 {delta_vavg:+.1f}초 {dir_v} ({P['avg_vavg']:.1f}초 → {C['avg_vavg']:.1f}초). {note_v}"
+        )
 
 # ── 잘한 / 아쉬운 점 ─────────────────────────────────────────────────────────
 well_done, missed = [], []
@@ -331,9 +310,10 @@ if fmt_sorted:
     )
 if hook_weak:
     hw = hook_weak[-1]
+    vavg_str = f"{hw['vavg']:.1f}초" if hw["vavg"] else "N/A"
     hypotheses.append(
-        f"가설: 이탈률 {hw['dropout10']:.0f}%인 '{hw['name'][:28]}' 도입부를 "
-        f"직접 소구 + 즉각 혜택 제시 구조로 교체 시 이탈률 40% 미만 달성 → CVR 15% 이상 개선 기대."
+        f"가설: 평균 시청 {vavg_str}인 '{hw['name'][:28]}' 도입부를 "
+        f"직접 소구 + 즉각 혜택 제시 구조로 교체 시 시청 시간 50% 이상 증가 → CVR 15% 이상 개선 기대."
     )
 
 # ── Notion 블록 ───────────────────────────────────────────────────────────────
@@ -378,9 +358,9 @@ blocks.append(tbl(
                            f"₩{P['cpa']:,.0f}" if P["cpa"] else "N/A",
                            chg(C["cpa"], P["cpa"], False) if C["cpa"] and P["cpa"] else "–"],
         ["아웃바운드 CTR", f"{C['avg_ob_ctr']:.2f}%",  f"{P['avg_ob_ctr']:.2f}%",   chg(C["avg_ob_ctr"], P["avg_ob_ctr"])],
-        ["동영상 이탈률(10초)", f"{C['avg_dropout']:.1f}%" if C["avg_dropout"] else "N/A",
-                               f"{P['avg_dropout']:.1f}%" if P["avg_dropout"] else "N/A",
-                               chg(C["avg_dropout"], P["avg_dropout"], False) if C["avg_dropout"] and P["avg_dropout"] else "–"],
+        ["동영상 평균 시청", f"{C['avg_vavg']:.1f}초" if C["avg_vavg"] else "N/A",
+                            f"{P['avg_vavg']:.1f}초" if P["avg_vavg"] else "N/A",
+                            chg(C["avg_vavg"], P["avg_vavg"]) if C["avg_vavg"] and P["avg_vavg"] else "–"],
         ["평균 CPM",        f"₩{C['avg_cpm']:,.0f}",   f"₩{P['avg_cpm']:,.0f}",     chg(C["avg_cpm"], P["avg_cpm"], False)],
         ["총 지출",         f"₩{C['spend']:,.0f}",      f"₩{P['spend']:,.0f}",       chg(C["spend"], P["spend"])],
         ["구매 건수",       f"{C['purchases']:.0f}건",  f"{P['purchases']:.0f}건",    chg(C["purchases"], P["purchases"])],
@@ -403,39 +383,34 @@ blocks.append(p(fatigue_narrative()))
 blocks.append(div())
 
 # ── 3. 훅 분석 심화 ───────────────────────────────────────────────────────────
-blocks.append(h2("3️⃣ 훅 분석 심화"))
-if vid_do:
+blocks.append(h2("3️⃣ 훅 분석 심화 (평균 시청 시간 기준)"))
+if vid_with_vavg:
     if hook_strong:
-        blocks.append(h3("훅 강한 소재 TOP 3 (10초 이탈률 낮음 = 초반 소구 성공)"))
+        blocks.append(h3("훅 강한 소재 TOP 3 (평균 시청 시간 높음 = 초반 소구 성공)"))
         blocks.append(tbl(
-            ["소재명", "10초 이탈률", "ROAS", "OB-CTR", "지출"],
-            [[a["name"][:38], f"{a['dropout10']:.1f}%",
+            ["소재명", "평균 시청(초)", "ROAS", "OB-CTR", "지출"],
+            [[a["name"][:38], f"{a['vavg']:.1f}초",
               f"{a['roas']:.2f}x" if a["roas"] else "N/A",
               f"{a['ob_ctr']:.2f}%", f"₩{a['spend']:,.0f}"] for a in hook_strong]
         ))
     if hook_weak:
-        blocks.append(h3("훅 약한 소재 TOP 3 (10초 이탈률 높음 = 도입부 개선 필요)"))
+        blocks.append(h3("훅 약한 소재 TOP 3 (평균 시청 시간 낮음 = 도입부 개선 필요)"))
         blocks.append(tbl(
-            ["소재명", "10초 이탈률", "ROAS", "OB-CTR", "지출"],
-            [[a["name"][:38], f"{a['dropout10']:.1f}%",
+            ["소재명", "평균 시청(초)", "ROAS", "OB-CTR", "지출"],
+            [[a["name"][:38], f"{a['vavg']:.1f}초",
               f"{a['roas']:.2f}x" if a["roas"] else "N/A",
-              f"{a['ob_ctr']:.2f}%", f"₩{a['spend']:,.0f}"] for a in reversed(hook_weak)]
+              f"{a['ob_ctr']:.2f}%", f"₩{a['spend']:,.0f}"] for a in hook_weak]
         ))
-    ret_rows = [(k, v) for k, v in [("25% 구간 (초반 유지)", ret["ret25"]),
-                                     ("50% 구간 (중반 유지)", ret["ret50"]),
-                                     ("75% 구간 (후반 유지)", ret["ret75"]),
-                                     ("95% 구간 (완주 근접)", ret["ret95"])] if v is not None]
-    if ret_rows:
-        blocks.append(h3("재생 구간별 평균 유지율"))
-        blocks.append(tbl(["구간", "평균 유지율"], [[k, f"{v:.1f}%"] for k, v in ret_rows]))
-
-        r25, r50 = ret.get("ret25"), ret.get("ret50")
-        if r25 and r25 < 50:
-            blocks.append(co(f"초반(0→25%) 이탈 집중 ({r25:.0f}%) — 첫 3초 훅 구조 교체 실험 권장. 직접 소구 또는 충격형 도입부 테스트.", "⚠️"))
-        elif r25 and r50 and r50 < r25 * 0.55:
-            blocks.append(co(f"중반(25→50%) 급격 이탈 ({r25:.0f}%→{r50:.0f}%) — 메인 메시지 전환 시점에 관심 이탈. 중간 CTA 또는 긴장감 유지 장치 추가 필요.", "⚠️"))
+    if hook_strong and hook_weak:
+        avg_s = sum(a["vavg"] for a in hook_strong) / len(hook_strong)
+        avg_w = sum(a["vavg"] for a in hook_weak) / len(hook_weak)
+        gap   = avg_s - avg_w
+        blocks.append(co(
+            f"고훅 소재 평균 {avg_s:.1f}초 vs 저훅 소재 평균 {avg_w:.1f}초 (차이 {gap:.1f}초). "
+            f"저시청 소재 도입부를 고시청 소재 방식으로 교체 시 시청 시간 개선 및 CVR 상승 기대.", "⚠️"
+        ))
 else:
-    blocks.append(p("동영상 소재 비디오 지표 없음 — 이미지 중심 운영 중이거나 데이터 미수집."))
+    blocks.append(p("동영상 소재 시청 지표 없음 — 이미지 중심 운영 중이거나 데이터 미수집."))
 blocks.append(div())
 
 # ── 4. 피로도 & 라이프사이클 ─────────────────────────────────────────────────
