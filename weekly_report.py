@@ -6,6 +6,7 @@ META_ACCOUNT  = "act_3431020723842735"
 NOTION_TOKEN  = os.environ["NOTION_TOKEN"]
 NOTION_PARENT = "12fb99f5082080e5a78ac8591f0fbae4"
 SPEND_MIN     = 10_000
+PERSON_FILTER = os.environ.get("PERSON_FILTER", "KB")
 
 # ── 날짜: 이번 주 월~어제 vs 전주 같은 기간 ──────────────────────────────────
 today     = datetime.date.today()

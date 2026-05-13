@@ -6,8 +6,10 @@ META_ACCOUNT  = "act_3431020723842735"
 NOTION_TOKEN  = os.environ["NOTION_TOKEN"]
 NOTION_PARENT = "12fb99f5082080e5a78ac8591f0fbae4"
 SPEND_MIN     = 10_000
+PERSON_FILTER = os.environ.get("PERSON_FILTER", "KB")
 
-yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+_target = os.environ.get("TARGET_DATE", "")
+yesterday = _target if _target else (datetime.date.today() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
 # ── 1. Meta 데이터 수집 ──────────────────────────────────────────────────────
 print(f"[1/3] Meta Ads 데이터 수집 ({yesterday})...")
@@ -63,8 +65,8 @@ for ad in ads:
         "purchases":   pur,
     })
 
-parsed = [a for a in all_ads if a["spend"] >= SPEND_MIN and "KB" in a["name"]]
-print(f"  -> KB 소재 중 지출 ₩{SPEND_MIN:,} 이상: {len(parsed)}개")
+parsed = [a for a in all_ads if a["spend"] >= SPEND_MIN and PERSON_FILTER in a["name"]]
+print(f"  -> {PERSON_FILTER} 소재 중 지출 ₩{SPEND_MIN:,} 이상: {len(parsed)}개")
 
 # ── 3. 상위 / 하위 선정 ──────────────────────────────────────────────────────
 def top_score(a):
@@ -291,7 +293,7 @@ blocks += [
     callout(
         f"총 지출 ₩{total_spend:,.0f}  |  구매 {total_pur:.0f}건  |  전환값 ₩{total_pv:,.0f}  |  "
         f"블렌드 ROAS {blend_roas:.2f}x  |  평균 CPM ₩{avg_cpm:,.0f}  |  평균 OB-CTR {avg_ob_ctr:.2f}%  |  "
-        f"분석 소재 {len(parsed)}개 (KB 소재 / ₩{SPEND_MIN:,} 이상)",
+        f"분석 소재 {len(parsed)}개 ({PERSON_FILTER} 소재 / ₩{SPEND_MIN:,} 이상)",
         "📌"
     ),
     divider(),

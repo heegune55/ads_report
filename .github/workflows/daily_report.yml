@@ -1,9 +1,27 @@
-name: 광고 소재 성과 일간 보고서
+name: 광고 소재 성과 보고서
 
 on:
   schedule:
     - cron: "0 1 * * *"   # 매일 오전 10시 KST (1am UTC)
-  workflow_dispatch:       # 수동 실행 버튼
+  workflow_dispatch:
+    inputs:
+      type:
+        description: '보고서 유형'
+        required: true
+        default: 'daily'
+        type: choice
+        options:
+          - daily
+          - weekly
+          - both
+      date:
+        description: '분석 날짜 (YYYY-MM-DD, 비우면 어제)'
+        required: false
+        default: ''
+      person:
+        description: '소재 이니셜 필터 (기본: KB)'
+        required: false
+        default: 'KB'
 
 jobs:
   report:
@@ -19,13 +37,18 @@ jobs:
         run: pip install requests
 
       - name: 일간 보고서 생성
+        if: ${{ github.event_name == 'schedule' || inputs.type == 'daily' || inputs.type == 'both' }}
         run: python report.py
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          PERSON_FILTER: ${{ inputs.person || 'KB' }}
+          TARGET_DATE: ${{ inputs.date || '' }}
 
       - name: 위클리 보고서 생성
+        if: ${{ github.event_name == 'schedule' || inputs.type == 'weekly' || inputs.type == 'both' }}
         run: python weekly_report.py
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          PERSON_FILTER: ${{ inputs.person || 'KB' }}
