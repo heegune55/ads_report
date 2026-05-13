@@ -1,4 +1,4 @@
-import requests, json, datetime, os, urllib.parse
+import requests, json, datetime, os
 from collections import Counter
 
 META_TOKEN    = os.environ["META_ACCESS_TOKEN"]
@@ -226,57 +226,13 @@ next_actions = [
 if "파트너십" in fmt_stats and fmt_stats["파트너십"]["avg_roas"] < 1:
     next_actions.append("파트너십 소재 전체 ROAS 1x 미만 — 신규 계약 전 성과 기준 명문화 필요")
 
-# ── 8. 차트 (필요한 것만) ─────────────────────────────────────────────────────
-def qc(cfg, w=700, h=360):
-    return "https://quickchart.io/chart?w={}&h={}&c={}".format(
-        w, h, urllib.parse.quote(json.dumps(cfg, ensure_ascii=False))
-    )
-
-# 차트 1: 상위 5 ROAS 바
-roas_chart = qc({
-    "type": "bar",
-    "data": {
-        "labels": [f"소재{i+1}" for i in range(len(top5))],
-        "datasets": [{
-            "label": "ROAS",
-            "backgroundColor": ["rgba(59,130,246,0.85)","rgba(16,185,129,0.85)",
-                                 "rgba(245,158,11,0.85)","rgba(139,92,246,0.85)",
-                                 "rgba(236,72,153,0.85)"],
-            "data": [round(a["roas"], 2) if a["roas"] else 0 for a in top5]
-        }]
-    },
-    "options": {
-        "plugins": {"title": {"display": True, "text": "상위 5개 소재 ROAS", "font": {"size": 14}}},
-        "scales": {"y": {"beginAtZero": True}}
-    }
-})
-
-# 차트 2: 하위 5 추정 손실액
-bot_losses = [round(a["spend"] * (1 - (a["roas"] or 0)) / 10000, 1) for a in bot5]
-bot_chart = qc({
-    "type": "horizontalBar",
-    "data": {
-        "labels": [f"하위{i+1}" for i in range(len(bot5))],
-        "datasets": [{
-            "label": "추정 손실액 (만원)",
-            "backgroundColor": "rgba(239,68,68,0.8)",
-            "data": bot_losses
-        }]
-    },
-    "options": {
-        "plugins": {"title": {"display": True, "text": "하위 5개 소재 추정 손실액 (만원)"}},
-        "scales": {"xAxes": [{"ticks": {"beginAtZero": True}}]}
-    }
-}, w=700, h=300)
-
-# ── 9. Notion 블록 빌더 ───────────────────────────────────────────────────────
+# ── 8. Notion 블록 빌더 ───────────────────────────────────────────────────────
 def h1(c):  return {"object":"block","type":"heading_1","heading_1":{"rich_text":[{"type":"text","text":{"content":str(c)[:2000]}}]}}
 def h2(c):  return {"object":"block","type":"heading_2","heading_2":{"rich_text":[{"type":"text","text":{"content":str(c)[:2000]}}]}}
 def h3(c):  return {"object":"block","type":"heading_3","heading_3":{"rich_text":[{"type":"text","text":{"content":str(c)[:2000]}}]}}
 def p(c):   return {"object":"block","type":"paragraph","paragraph":{"rich_text":[{"type":"text","text":{"content":str(c)[:2000]}}]}}
 def blt(c): return {"object":"block","type":"bulleted_list_item","bulleted_list_item":{"rich_text":[{"type":"text","text":{"content":str(c)[:2000]}}]}}
 def divider(): return {"object":"block","type":"divider","divider":{}}
-def img(url): return {"object":"block","type":"image","image":{"type":"external","external":{"url":url}}}
 
 def callout(text, emoji="💡"):
     return {"object":"block","type":"callout","callout":{
@@ -328,7 +284,6 @@ blocks.append(divider())
 
 # 상위 5개
 blocks.append(h2("🏆 상위 5개 소재"))
-blocks.append(img(roas_chart))
 for i, a in enumerate(top5, 1):
     blocks.append(p(f"소재{i}: {a['name']}"))
 blocks.append(notion_table(
@@ -370,7 +325,6 @@ blocks.append(divider())
 
 # 하위 5개
 blocks.append(h2("⚠️ 하위 5개 소재 (손실액 기준)"))
-blocks.append(img(bot_chart))
 for i, a in enumerate(bot5, 1):
     blocks.append(p(f"하위{i}: {a['name']}"))
 blocks.append(notion_table(
