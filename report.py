@@ -16,7 +16,8 @@ print(f"[1/3] Meta Ads 데이터 수집 ({yesterday})...")
 fields = ",".join([
     "ad_id","ad_name","impressions","spend","cpm","ctr",
     "outbound_clicks_ctr","cpc","actions","action_values",
-    "purchase_roas","video_avg_time_watched_actions","post_engagement",
+    "purchase_roas","video_avg_time_watched_actions",
+    "video_play_actions","video_p25_watched_actions","post_engagement",
 ])
 ads, next_url = [], None
 params = {"level":"ad","date_preset":"yesterday","fields":fields,
@@ -46,12 +47,17 @@ for ad in ads:
     obl = ad.get("outbound_clicks_ctr", [])
     rl  = ad.get("purchase_roas", [])
     avl = ad.get("action_values", [])
-    vl  = ad.get("video_avg_time_watched_actions", [])
-    pur = ga(al, "purchase") or 0
-    clk = ga(al, "link_click") or 1
+    vl   = ad.get("video_avg_time_watched_actions", [])
+    pl   = ad.get("video_play_actions", [])
+    p25l = ad.get("video_p25_watched_actions", [])
+    pur  = ga(al, "purchase") or 0
+    clk  = ga(al, "link_click") or 1
+    impr = float(ad.get("impressions", 0) or 0)
+    plays = float(pl[0].get("value", 0)) if pl else None
+    p25   = float(p25l[0].get("value", 0)) if p25l else None
     all_ads.append({
         "name":        ad.get("ad_name", ""),
-        "impressions": float(ad.get("impressions", 0) or 0),
+        "impressions": impr,
         "spend":       float(ad.get("spend", 0) or 0),
         "cpm":         float(ad.get("cpm", 0) or 0),
         "ctr":         float(ad.get("ctr", 0) or 0),
@@ -63,6 +69,10 @@ for ad in ads:
         "v3s":         float(vl[0].get("value", 0)) if vl else None,
         "pe":          ga(al, "post_engagement") or float(ad.get("post_engagement", 0) or 0),
         "purchases":   pur,
+        "plays":       plays,
+        "p25":         p25,
+        "hook_rate":   round(plays / impr * 100, 1) if plays and impr else None,
+        "hold_rate":   round(p25 / plays * 100, 1) if p25 and plays else None,
     })
 
 parsed = [a for a in all_ads if a["spend"] >= SPEND_MIN and PERSON_FILTER in a["name"]]
@@ -303,14 +313,15 @@ blocks += [
 all_sorted = sorted(parsed, key=lambda x: x["spend"], reverse=True)
 blocks.append(h2("📋 전체 소재 성과"))
 blocks.append(notion_table(
-    ["소재명", "지출", "ROAS", "OB-CTR", "CPM", "구매수", "전환값"],
+    ["소재명", "지출", "ROAS", "OB-CTR", "CPM", "훅률", "홀드율", "구매수"],
     [[a["name"][:35],
       f"₩{a['spend']:,.0f}",
       f"{a['roas']:.2f}x" if a["roas"] else "N/A",
       f"{a['ob_ctr']:.2f}%",
       f"₩{a['cpm']:,.0f}",
-      f"{a['purchases']:.0f}건",
-      f"₩{a['pv']:,.0f}" if a["pv"] else "N/A"]
+      f"{a['hook_rate']:.1f}%" if a["hook_rate"] else "N/A",
+      f"{a['hold_rate']:.1f}%" if a["hold_rate"] else "N/A",
+      f"{a['purchases']:.0f}건"]
      for a in all_sorted]
 ))
 blocks.append(divider())
@@ -321,12 +332,12 @@ blocks.append(img(roas_chart))
 for i, a in enumerate(top5, 1):
     blocks.append(p(f"소재{i}: {a['name']}"))
 blocks.append(notion_table(
-    ["#", "소재명", "지출", "CPM", "OB-CTR", "ROAS", "구매수", "3초재생"],
+    ["#", "소재명", "지출", "CPM", "OB-CTR", "ROAS", "훅률", "홀드율"],
     [[str(i), a["name"][:30], f"₩{a['spend']:,.0f}", f"₩{a['cpm']:,.0f}",
       f"{a['ob_ctr']:.2f}%",
       f"{a['roas']:.2f}x" if a["roas"] else "N/A",
-      f"{a['purchases']:.0f}건",
-      f"{a['v3s']:.1f}초" if a["v3s"] else "N/A"]
+      f"{a['hook_rate']:.1f}%" if a["hook_rate"] else "N/A",
+      f"{a['hold_rate']:.1f}%" if a["hold_rate"] else "N/A"]
      for i, a in enumerate(top5, 1)]
 ))
 
@@ -340,6 +351,12 @@ for i, a in enumerate(top5, 1):
         diagnoses.append(f"OB-CTR {a['ob_ctr']:.2f}%(평균 {avg_ob_ctr:.2f}% 대비 {a['ob_ctr']/avg_ob_ctr:.1f}배) — 소재 반응 및 랜딩 연결성 우수")
     if a["roas"] and a["roas"] > blend_roas * 1.5:
         diagnoses.append(f"ROAS {a['roas']:.2f}x로 블렌드 ROAS({blend_roas:.2f}x)의 {a['roas']/blend_roas:.1f}배 — 전환 효율 탁월")
+    if a["hook_rate"] is not None:
+        bench = "우수 (기준 8% 이상)" if a["hook_rate"] >= 8 else "주의 (기준 8% 미만)"
+        diagnoses.append(f"훅률 {a['hook_rate']:.1f}% — {bench}")
+    if a["hold_rate"] is not None:
+        bench = "우수 (기준 60% 이상)" if a["hold_rate"] >= 60 else "개선 필요 (기준 60% 미만)"
+        diagnoses.append(f"홀드율 {a['hold_rate']:.1f}% — {bench}")
     if a["v3s"] and a["v3s"] >= 3:
         diagnoses.append(f"3초 재생 {a['v3s']:.1f}초 — 도입부 훅이 이탈 없이 시청 유도")
     low_spend_note = " ※ 지출 적어 통계적 신뢰도 낮음 — 예산 증액 후 재검증 필요" if a["spend"] < 50_000 else ""
@@ -378,6 +395,10 @@ for i, a in enumerate(bot5, 1):
         diagnoses.append(f"CPM ₩{a['cpm']:,.0f}으로 평균 대비 {a['cpm']/avg_cpm:.1f}배 — 오디언스 경쟁 과열 또는 관련성 낮음")
     if avg_ob_ctr > 0 and a["ob_ctr"] < avg_ob_ctr * 0.5:
         diagnoses.append(f"OB-CTR {a['ob_ctr']:.2f}%(평균 {avg_ob_ctr:.2f}%) — 소재 반응 자체가 낮아 클릭 유도 실패")
+    if a["hook_rate"] is not None and a["hook_rate"] < 8:
+        diagnoses.append(f"훅률 {a['hook_rate']:.1f}% — 기준(8%) 미달, 도입부 훅 재설계 필요")
+    if a["hold_rate"] is not None and a["hold_rate"] < 60:
+        diagnoses.append(f"홀드율 {a['hold_rate']:.1f}% — 기준(60%) 미달, 영상 초반 이탈 과다")
     action = "즉시 중단" if a["spend"] > 50_000 and (not a["roas"] or a["roas"] < 0.5) else "예산 축소 후 관찰"
     blocks.append(h3(f"하위{i}. {a['name'][:50]}"))
     blocks.append(callout(" / ".join(diagnoses) + f"\n→ {action}", "🔴"))

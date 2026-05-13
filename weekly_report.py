@@ -31,6 +31,7 @@ FIELDS = ",".join([
     "spend","cpm","ctr","outbound_clicks_ctr","cpc",
     "actions","action_values","purchase_roas","post_engagement",
     "video_avg_time_watched_actions",
+    "video_play_actions","video_p25_watched_actions",
 ])
 
 def fetch(d_since, d_until):
@@ -75,10 +76,15 @@ def parse(ad):
     pur  = ga(al, "purchase") or 0
     spd  = float(ad.get("spend", 0) or 0)
     vavg_raw = fv(ad.get("video_avg_time_watched_actions", []))
-    vavg = vavg_raw if vavg_raw > 0 else None
+    vavg  = vavg_raw if vavg_raw > 0 else None
+    plays = fv(ad.get("video_play_actions", [])) or None
+    p25   = fv(ad.get("video_p25_watched_actions", [])) or None
+    impr  = float(ad.get("impressions", 0) or 0)
+    hook_rate = plays / impr * 100 if plays and impr else None
+    hold_rate = p25 / plays * 100 if p25 and plays else None
     return {
         "name":       ad.get("ad_name", ""),
-        "impressions":float(ad.get("impressions", 0) or 0),
+        "impressions":impr,
         "reach":      float(ad.get("reach", 0) or 0),
         "frequency":  float(ad.get("frequency", 0) or 0),
         "spend":      spd,
@@ -90,7 +96,11 @@ def parse(ad):
         "purchases":  pur,
         "cpa":        spd / pur if pur > 0 else None,
         "vavg":       vavg,
-        "is_video":   vavg is not None,
+        "plays":      plays,
+        "p25":        p25,
+        "hook_rate":  hook_rate,
+        "hold_rate":  hold_rate,
+        "is_video":   vavg is not None or plays is not None,
     }
 
 curr = [a for a in (parse(r) for r in curr_raw) if a["spend"] >= SPEND_MIN and "KB" in a["name"]]
@@ -100,23 +110,28 @@ prev = [a for a in (parse(r) for r in prev_raw) if a["spend"] >= SPEND_MIN and "
 def agg(ads):
     if not ads:
         return dict(n=0, spend=0, pv=0, purchases=0, blend_roas=0,
-                    cpa=None, avg_ob_ctr=0, avg_cpm=0, avg_vavg=None, n_fatigue=0)
+                    cpa=None, avg_ob_ctr=0, avg_cpm=0, avg_vavg=None, n_fatigue=0,
+                    avg_hook_rate=None, avg_hold_rate=None)
     spd  = sum(a["spend"] for a in ads)
     pv   = sum(a["pv"] for a in ads if a["pv"])
     pur  = sum(a["purchases"] for a in ads)
     vid  = [a for a in ads if a["is_video"]]
     vavg_l = [a["vavg"] for a in vid if a["vavg"] is not None]
+    hr_l   = [a["hook_rate"] for a in ads if a["hook_rate"] is not None]
+    hd_l   = [a["hold_rate"] for a in ads if a["hold_rate"] is not None]
     return {
-        "n":           len(ads),
-        "spend":       spd,
-        "pv":          pv,
-        "purchases":   pur,
-        "blend_roas":  pv / spd if spd else 0,
-        "cpa":         spd / pur if pur else None,
-        "avg_ob_ctr":  sum(a["ob_ctr"] for a in ads) / len(ads),
-        "avg_cpm":     sum(a["cpm"] for a in ads) / len(ads),
-        "avg_vavg":    sum(vavg_l) / len(vavg_l) if vavg_l else None,
-        "n_fatigue":   sum(1 for a in ads if a["frequency"] >= 3),
+        "n":             len(ads),
+        "spend":         spd,
+        "pv":            pv,
+        "purchases":     pur,
+        "blend_roas":    pv / spd if spd else 0,
+        "cpa":           spd / pur if pur else None,
+        "avg_ob_ctr":    sum(a["ob_ctr"] for a in ads) / len(ads),
+        "avg_cpm":       sum(a["cpm"] for a in ads) / len(ads),
+        "avg_vavg":      sum(vavg_l) / len(vavg_l) if vavg_l else None,
+        "n_fatigue":     sum(1 for a in ads if a["frequency"] >= 3),
+        "avg_hook_rate": sum(hr_l) / len(hr_l) if hr_l else None,
+        "avg_hold_rate": sum(hd_l) / len(hd_l) if hd_l else None,
     }
 
 C = agg(curr)
@@ -362,6 +377,12 @@ blocks.append(tbl(
         ["동영상 평균 시청", f"{C['avg_vavg']:.1f}초" if C["avg_vavg"] else "N/A",
                             f"{P['avg_vavg']:.1f}초" if P["avg_vavg"] else "N/A",
                             chg(C["avg_vavg"], P["avg_vavg"]) if C["avg_vavg"] and P["avg_vavg"] else "–"],
+        ["훅률 (Hook Rate)", f"{C['avg_hook_rate']:.1f}%" if C["avg_hook_rate"] else "N/A",
+                             f"{P['avg_hook_rate']:.1f}%" if P["avg_hook_rate"] else "N/A",
+                             chg(C["avg_hook_rate"], P["avg_hook_rate"]) if C["avg_hook_rate"] and P["avg_hook_rate"] else "–"],
+        ["홀드율 (Hold Rate)", f"{C['avg_hold_rate']:.1f}%" if C["avg_hold_rate"] else "N/A",
+                               f"{P['avg_hold_rate']:.1f}%" if P["avg_hold_rate"] else "N/A",
+                               chg(C["avg_hold_rate"], P["avg_hold_rate"]) if C["avg_hold_rate"] and P["avg_hold_rate"] else "–"],
         ["평균 CPM",        f"₩{C['avg_cpm']:,.0f}",   f"₩{P['avg_cpm']:,.0f}",     chg(C["avg_cpm"], P["avg_cpm"], False)],
         ["총 지출",         f"₩{C['spend']:,.0f}",      f"₩{P['spend']:,.0f}",       chg(C["spend"], P["spend"])],
         ["구매 건수",       f"{C['purchases']:.0f}건",  f"{P['purchases']:.0f}건",    chg(C["purchases"], P["purchases"])],
@@ -389,16 +410,22 @@ if vid_with_vavg:
     if hook_strong:
         blocks.append(h3("훅 강한 소재 TOP 3 (평균 시청 시간 높음 = 초반 소구 성공)"))
         blocks.append(tbl(
-            ["소재명", "평균 시청(초)", "ROAS", "OB-CTR", "지출"],
-            [[a["name"][:38], f"{a['vavg']:.1f}초",
+            ["소재명", "평균 시청(초)", "훅률", "홀드율", "ROAS", "OB-CTR", "지출"],
+            [[a["name"][:38],
+              f"{a['vavg']:.1f}초" if a["vavg"] else "N/A",
+              f"{a['hook_rate']:.1f}%" if a["hook_rate"] else "N/A",
+              f"{a['hold_rate']:.1f}%" if a["hold_rate"] else "N/A",
               f"{a['roas']:.2f}x" if a["roas"] else "N/A",
               f"{a['ob_ctr']:.2f}%", f"₩{a['spend']:,.0f}"] for a in hook_strong]
         ))
     if hook_weak:
         blocks.append(h3("훅 약한 소재 TOP 3 (평균 시청 시간 낮음 = 도입부 개선 필요)"))
         blocks.append(tbl(
-            ["소재명", "평균 시청(초)", "ROAS", "OB-CTR", "지출"],
-            [[a["name"][:38], f"{a['vavg']:.1f}초",
+            ["소재명", "평균 시청(초)", "훅률", "홀드율", "ROAS", "OB-CTR", "지출"],
+            [[a["name"][:38],
+              f"{a['vavg']:.1f}초" if a["vavg"] else "N/A",
+              f"{a['hook_rate']:.1f}%" if a["hook_rate"] else "N/A",
+              f"{a['hold_rate']:.1f}%" if a["hold_rate"] else "N/A",
               f"{a['roas']:.2f}x" if a["roas"] else "N/A",
               f"{a['ob_ctr']:.2f}%", f"₩{a['spend']:,.0f}"] for a in hook_weak]
         ))
