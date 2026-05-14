@@ -14,6 +14,7 @@ on:
           - daily
           - weekly
           - both
+          - sixmonth
       date:
         description: '분석 날짜 (YYYY-MM-DD, 비우면 어제)'
         required: false
@@ -52,3 +53,10 @@ jobs:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           PERSON_FILTER: ${{ inputs.person || 'KB' }}
+
+      - name: 6개월 소재 분석
+        if: ${{ inputs.type == 'sixmonth' }}
+        run: python six_month_report.py
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
