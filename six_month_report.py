@@ -132,8 +132,8 @@ def tbl(headers, rows):
     ch  = [{"type":"table_row","table_row":{"cells":[cell(h) for h in headers]}}]
     ch += [{"type":"table_row","table_row":{"cells":[cell(v) for v in row]}} for row in rows]
     return {"object":"block","type":"table",
-            "table":{"table_width":len(headers),"has_column_header":True,"has_row_header":False},
-            "children": ch}
+            "table":{"table_width":len(headers),"has_column_header":True,"has_row_header":False,
+                     "children": ch}}
 
 # ── 블록 조립 ─────────────────────────────────────────────────────────────────
 blocks = []
@@ -153,9 +153,8 @@ blocks += [
 # ── ROAS 180% 이상 ────────────────────────────────────────────────────────────
 blocks.append(h2(f"✅ ROAS 180% 이상 소재 ({len(qualified)}개)"))
 blocks.append(tbl(
-    ["#", "소재명", "지출", "ROAS", "OB-CTR", "CPM", "훅률", "홀드율", "구매수"],
-    [[str(i),
-      a["name"],
+    ["소재명", "지출", "ROAS", "OB-CTR", "CPM", "훅률", "홀드율", "구매수"],
+    [[a["name"],
       f"₩{a['spend']:,.0f}",
       f"{a['roas']:.2f}x",
       f"{a['ob_ctr']:.2f}%",
@@ -163,16 +162,15 @@ blocks.append(tbl(
       f"{a['hook_rate']:.1f}%" if a["hook_rate"] else "N/A",
       f"{a['hold_rate']:.1f}%" if a["hold_rate"] else "N/A",
       f"{a['purchases']:.0f}건"]
-     for i, a in enumerate(qualified, 1)]
+     for a in qualified]
 ))
 blocks.append(div())
 
 # ── 나머지 소재 (ROAS 180% 미만) ─────────────────────────────────────────────
 blocks.append(h2(f"📊 ROAS 180% 미만 소재 ({len(rest)}개)"))
 blocks.append(tbl(
-    ["#", "소재명", "지출", "ROAS", "OB-CTR", "CPM", "훅률", "홀드율", "구매수"],
-    [[str(i),
-      a["name"],
+    ["소재명", "지출", "ROAS", "OB-CTR", "CPM", "훅률", "홀드율", "구매수"],
+    [[a["name"],
       f"₩{a['spend']:,.0f}",
       f"{a['roas']:.2f}x" if a["roas"] else "전환 없음",
       f"{a['ob_ctr']:.2f}%",
@@ -180,7 +178,7 @@ blocks.append(tbl(
       f"{a['hook_rate']:.1f}%" if a["hook_rate"] else "N/A",
       f"{a['hold_rate']:.1f}%" if a["hold_rate"] else "N/A",
       f"{a['purchases']:.0f}건"]
-     for i, a in enumerate(rest, 1)]
+     for a in rest]
 ))
 blocks.append(div())
 
