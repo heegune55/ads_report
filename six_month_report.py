@@ -214,10 +214,12 @@ def flush_table(pid, table_block):
     skeleton = {k: v for k, v in table_block.items() if k != "children"}
     res = requests.patch(f"https://api.notion.com/v1/blocks/{pid}/children",
                          headers=nh, json={"children": [skeleton]}).json()
-    if "error" in res:
-        print(f"  -> 테이블 생성 실패: {res.get('message')}")
+    results = res.get("results", [])
+    if not results or res.get("object") == "error":
+        print(f"  -> 테이블 생성 실패: {res.get('message', res)}")
         return
-    table_id = res["results"][0]["id"]
+    table_id = results[0]["id"]
+    print(f"  -> 테이블 생성 완료 (id: {table_id[:8]}...)")
 
     # 2단계: 행을 테이블에 추가
     rows = table_block["children"]
@@ -225,7 +227,7 @@ def flush_table(pid, table_block):
         chunk = rows[i:i+50]
         row_res = requests.patch(f"https://api.notion.com/v1/blocks/{table_id}/children",
                                  headers=nh, json={"children": chunk}).json()
-        if "error" in row_res:
+        if row_res.get("object") == "error":
             print(f"  -> 행 추가 실패: {row_res.get('message')}")
         else:
             print(f"  -> {len(chunk)}개 행 추가")
