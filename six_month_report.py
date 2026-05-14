@@ -1,4 +1,4 @@
-import requests, json, datetime, os
+import requests, json, datetime, os, time
 
 META_TOKEN    = os.environ["META_ACCESS_TOKEN"]
 META_ACCOUNT  = "act_3431020723842735"
@@ -17,6 +17,21 @@ FIELDS = ",".join([
 ])
 
 # ── 1. 데이터 수집 ────────────────────────────────────────────────────────────
+def api_get(url, params=None, retries=5):
+    for attempt in range(retries):
+        r = requests.get(url, params=params, timeout=60)
+        d = r.json()
+        if "error" in d:
+            code = d["error"].get("code", 0)
+            if code in (4, 17, 32, 613):
+                wait = 2 ** (attempt + 3)
+                print(f"  -> Rate limit (code {code}), {wait}초 대기 후 재시도...")
+                time.sleep(wait)
+                continue
+            raise SystemExit(f"Meta API 오류: {d['error']['message']}")
+        return d
+    raise SystemExit("Rate limit 반복 — 나중에 다시 시도해주세요.")
+
 print(f"[1/3] Meta Ads 수집 ({since} ~ {until})...")
 ads_raw, nxt = [], None
 params = {
@@ -26,10 +41,7 @@ params = {
 }
 url = f"https://graph.facebook.com/v20.0/{META_ACCOUNT}/insights"
 while True:
-    r = requests.get(nxt or url, params=(None if nxt else params))
-    d = r.json()
-    if "error" in d:
-        raise SystemExit(f"Meta API 오류: {d['error']['message']}")
+    d = api_get(nxt or url, params=(None if nxt else params))
     ads_raw.extend(d.get("data", []))
     nxt = d.get("paging", {}).get("next")
     if not nxt:
