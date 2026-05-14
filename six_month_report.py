@@ -153,7 +153,7 @@ blocks.append(h2(f"✅ ROAS 180% 이상 소재 ({len(qualified)}개)"))
 blocks.append(tbl(
     ["#", "소재명", "지출", "ROAS", "OB-CTR", "CPM", "훅률", "홀드율", "구매수"],
     [[str(i),
-      a["name"][:42],
+      a["name"],
       f"₩{a['spend']:,.0f}",
       f"{a['roas']:.2f}x",
       f"{a['ob_ctr']:.2f}%",
@@ -170,7 +170,7 @@ blocks.append(h2(f"📊 ROAS 180% 미만 소재 ({len(rest)}개)"))
 blocks.append(tbl(
     ["#", "소재명", "지출", "ROAS", "OB-CTR", "CPM", "훅률", "홀드율", "구매수"],
     [[str(i),
-      a["name"][:42],
+      a["name"],
       f"₩{a['spend']:,.0f}",
       f"{a['roas']:.2f}x" if a["roas"] else "전환 없음",
       f"{a['ob_ctr']:.2f}%",
@@ -199,6 +199,7 @@ page_id = page["id"]
 print(f"  -> {page.get('url')}")
 
 print("[3/3] 블록 추가...")
+
 def flush(pid, chunk):
     if not chunk: return
     res = requests.patch(f"https://api.notion.com/v1/blocks/{pid}/children",
@@ -208,11 +209,32 @@ def flush(pid, chunk):
     else:
         print(f"  -> {len(chunk)}개 추가")
 
+def flush_table(pid, table_block):
+    # 1단계: 테이블 골격만 생성 (행 제외)
+    skeleton = {k: v for k, v in table_block.items() if k != "children"}
+    res = requests.patch(f"https://api.notion.com/v1/blocks/{pid}/children",
+                         headers=nh, json={"children": [skeleton]}).json()
+    if "error" in res:
+        print(f"  -> 테이블 생성 실패: {res.get('message')}")
+        return
+    table_id = res["results"][0]["id"]
+
+    # 2단계: 행을 테이블에 추가
+    rows = table_block["children"]
+    for i in range(0, len(rows), 50):
+        chunk = rows[i:i+50]
+        row_res = requests.patch(f"https://api.notion.com/v1/blocks/{table_id}/children",
+                                 headers=nh, json={"children": chunk}).json()
+        if "error" in row_res:
+            print(f"  -> 행 추가 실패: {row_res.get('message')}")
+        else:
+            print(f"  -> {len(chunk)}개 행 추가")
+
 pending = []
 for block in blocks:
     if block.get("type") == "table":
         flush(page_id, pending); pending = []
-        flush(page_id, [block])
+        flush_table(page_id, block)
     else:
         pending.append(block)
         if len(pending) >= 90:
