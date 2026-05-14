@@ -86,19 +86,18 @@ print(f"  -> KB 소재 (₩{SPEND_MIN:,} 이상): {len(ads)}개")
 if not ads:
     raise SystemExit("해당 조건의 소재 없음")
 
-# ── 3. ROAS 180% 이상만 필터 + 정렬 ─────────────────────────────────────────
-qualified = [a for a in ads if a["roas"] and a["roas"] >= 1.8]
-qualified_sorted = sorted(qualified, key=lambda a: a["roas"], reverse=True)
+# ── 3. 정렬 (ROAS 높은 순, 전환 없는 소재는 맨 뒤) ──────────────────────────
+ads_sorted = sorted(ads, key=lambda a: a["roas"] if a["roas"] else -1, reverse=True)
 
-print(f"  -> ROAS 180% 이상: {len(qualified)}개")
+qualified   = [a for a in ads_sorted if a["roas"] and a["roas"] >= 1.8]
+rest        = [a for a in ads_sorted if not a["roas"] or a["roas"] < 1.8]
 
-if not qualified:
-    raise SystemExit("ROAS 180% 이상 소재 없음")
+print(f"  -> ROAS 180% 이상: {len(qualified)}개 / 나머지: {len(rest)}개")
 
 # 집계
-total_spend = sum(a["spend"] for a in qualified)
-total_pv    = sum(a["pv"] for a in qualified)
-total_pur   = sum(a["purchases"] for a in qualified)
+total_spend = sum(a["spend"] for a in ads)
+total_pv    = sum(a["pv"] for a in ads)
+total_pur   = sum(a["purchases"] for a in ads)
 blend_roas  = total_pv / total_spend if total_spend else 0
 
 # ── Notion 블록 빌더 ──────────────────────────────────────────────────────────
@@ -127,22 +126,22 @@ blocks = []
 period = f"{since.strftime('%Y.%m.%d')} ~ {until.strftime('%Y.%m.%d')}"
 
 blocks += [
-    h1(f"🏅 KB 소재 성과 리스트 — ROAS 180% 이상 / 최근 6개월"),
+    h1(f"📋 KB 소재 성과 리스트 — 최근 6개월 지출 100만↑"),
     co(
-        f"분석 기간: {period}  |  조건: 지출 ₩100만 이상 + ROAS 180% 이상  |  "
-        f"해당 소재: {len(qualified)}개  |  합산 지출: ₩{total_spend:,.0f}  |  "
-        f"합산 구매: {total_pur:.0f}건  |  평균 ROAS: {blend_roas:.2f}x",
+        f"분석 기간: {period}  |  전체 소재: {len(ads)}개  |  "
+        f"합산 지출: ₩{total_spend:,.0f}  |  블렌드 ROAS: {blend_roas:.2f}x  |  "
+        f"총 구매: {total_pur:.0f}건  |  ROAS 180% 이상: {len(qualified)}개",
         "📌"
     ),
     div(),
 ]
 
-# ── 소재 리스트 (ROAS 높은 순) ───────────────────────────────────────────────
-blocks.append(h2(f"✅ ROAS 180% 이상 소재 {len(qualified)}개 (ROAS 높은 순)"))
+# ── ROAS 180% 이상 ────────────────────────────────────────────────────────────
+blocks.append(h2(f"✅ ROAS 180% 이상 소재 ({len(qualified)}개)"))
 blocks.append(tbl(
     ["#", "소재명", "지출", "ROAS", "OB-CTR", "CPM", "훅률", "홀드율", "구매수"],
     [[str(i),
-      a["name"][:40],
+      a["name"][:42],
       f"₩{a['spend']:,.0f}",
       f"{a['roas']:.2f}x",
       f"{a['ob_ctr']:.2f}%",
@@ -150,41 +149,26 @@ blocks.append(tbl(
       f"{a['hook_rate']:.1f}%" if a["hook_rate"] else "N/A",
       f"{a['hold_rate']:.1f}%" if a["hold_rate"] else "N/A",
       f"{a['purchases']:.0f}건"]
-     for i, a in enumerate(qualified_sorted, 1)]
+     for i, a in enumerate(qualified, 1)]
 ))
 blocks.append(div())
 
-# ── 베스트 소재 코멘트 ────────────────────────────────────────────────────────
-best = qualified_sorted[0]
-blocks.append(h2("🥇 최고 성과 소재"))
-blocks.append(co(
-    f"{best['name']}\n"
-    f"ROAS {best['roas']:.2f}x  |  OB-CTR {best['ob_ctr']:.2f}%  |  "
-    f"지출 ₩{best['spend']:,.0f}  |  구매 {best['purchases']:.0f}건\n"
-    f"→ 이 소재의 훅·메시지·포맷 구조를 신규 소재 레퍼런스로 활용 권장",
-    "🥇"
+# ── 나머지 소재 (ROAS 180% 미만) ─────────────────────────────────────────────
+blocks.append(h2(f"📊 ROAS 180% 미만 소재 ({len(rest)}개)"))
+blocks.append(tbl(
+    ["#", "소재명", "지출", "ROAS", "OB-CTR", "CPM", "훅률", "홀드율", "구매수"],
+    [[str(i),
+      a["name"][:42],
+      f"₩{a['spend']:,.0f}",
+      f"{a['roas']:.2f}x" if a["roas"] else "전환 없음",
+      f"{a['ob_ctr']:.2f}%",
+      f"₩{a['cpm']:,.0f}",
+      f"{a['hook_rate']:.1f}%" if a["hook_rate"] else "N/A",
+      f"{a['hold_rate']:.1f}%" if a["hold_rate"] else "N/A",
+      f"{a['purchases']:.0f}건"]
+     for i, a in enumerate(rest, 1)]
 ))
 blocks.append(div())
-
-# ── 인사이트 요약 ─────────────────────────────────────────────────────────────
-blocks.append(h2("💡 인사이트 요약"))
-avg_roas = sum(a["roas"] for a in qualified) / len(qualified)
-avg_ob_ctr = sum(a["ob_ctr"] for a in qualified) / len(qualified)
-blocks.append(blt(f"평균 ROAS {avg_roas:.2f}x, 평균 OB-CTR {avg_ob_ctr:.2f}%"))
-
-hook_ads = [a for a in qualified if a["hook_rate"] and a["hook_rate"] >= 8]
-if hook_ads:
-    blocks.append(blt(f"훅률 8% 이상 소재 {len(hook_ads)}/{len(qualified)}개 — 노출 대비 재생 전환 우수"))
-
-hold_ads = [a for a in qualified if a["hold_rate"] and a["hold_rate"] >= 60]
-if hold_ads:
-    blocks.append(blt(f"홀드율 60% 이상 소재 {len(hold_ads)}/{len(qualified)}개 — 영상 초반 이탈 낮음"))
-
-top3 = qualified_sorted[:3]
-blocks.append(blt(
-    f"TOP 3 소재 ROAS: " +
-    " / ".join([f"{a['roas']:.2f}x ({a['name'][:20]}...)" for a in top3])
-))
 
 # ── Notion 업로드 ─────────────────────────────────────────────────────────────
 print("[2/3] Notion 페이지 생성...")
@@ -193,7 +177,7 @@ nh = {"Authorization": f"Bearer {NOTION_TOKEN}",
 
 page = requests.post("https://api.notion.com/v1/pages", headers=nh, json={
     "parent": {"page_id": NOTION_PARENT},
-    "properties": {"title": {"title": [{"text": {"content": f"🏅 KB 소재 ROAS 180% 이상 리스트 — 최근 6개월 ({period})"}}]}},
+    "properties": {"title": {"title": [{"text": {"content": f"📋 KB 소재 성과 리스트 — 최근 6개월 지출 100만↑ ({period})"}}]}},
 }).json()
 
 if page.get("object") != "page":
