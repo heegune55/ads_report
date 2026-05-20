@@ -1,7 +1,7 @@
 import requests, json, datetime, os, time
 
 META_TOKEN    = os.environ["META_ACCESS_TOKEN"]
-META_ACCOUNT  = "act_3431020723842735"
+META_ACCOUNT  = os.environ.get("META_ACCOUNT", "act_3431020723842735")
 NOTION_TOKEN  = os.environ["NOTION_TOKEN"]
 NOTION_PARENT = "12fb99f5082080e5a78ac8591f0fbae4"
 SPEND_MIN     = 1_000_000

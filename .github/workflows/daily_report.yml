@@ -17,6 +17,14 @@ on:
           - sixmonth
           - printnames
           - archbalance
+      account:
+        description: '광고 계정'
+        required: false
+        default: 'KB계정'
+        type: choice
+        options:
+          - KB계정
+          - Baruner3계정
       date:
         description: '분석 날짜 (YYYY-MM-DD, 비우면 어제)'
         required: false
@@ -39,6 +47,15 @@ jobs:
       - name: 패키지 설치
         run: pip install requests
 
+      - name: 계정 ID 설정
+        id: account
+        run: |
+          if [ "${{ inputs.account }}" = "Baruner3계정" ]; then
+            echo "META_ACCOUNT=act_607986688972375" >> $GITHUB_ENV
+          else
+            echo "META_ACCOUNT=act_3431020723842735" >> $GITHUB_ENV
+          fi
+
       - name: 일간 보고서 생성
         if: ${{ github.event_name == 'schedule' || inputs.type == 'daily' || inputs.type == 'both' }}
         run: python report.py
@@ -47,6 +64,7 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           PERSON_FILTER: ${{ inputs.person || 'KB' }}
           TARGET_DATE: ${{ inputs.date || '' }}
+          META_ACCOUNT: ${{ env.META_ACCOUNT }}
 
       - name: 위클리 보고서 생성
         if: ${{ github.event_name == 'schedule' || inputs.type == 'weekly' || inputs.type == 'both' }}
@@ -55,6 +73,7 @@ jobs:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           PERSON_FILTER: ${{ inputs.person || 'KB' }}
+          META_ACCOUNT: ${{ env.META_ACCOUNT }}
 
       - name: 6개월 소재 분석
         if: ${{ inputs.type == 'sixmonth' }}
@@ -62,12 +81,14 @@ jobs:
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          META_ACCOUNT: ${{ env.META_ACCOUNT }}
 
       - name: 소재명 출력
         if: ${{ inputs.type == 'printnames' }}
         run: python print_names.py
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_ACCOUNT: ${{ env.META_ACCOUNT }}
 
       - name: 아치밸런스 소재 분석
         if: ${{ inputs.type == 'archbalance' }}
@@ -75,3 +96,4 @@ jobs:
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          META_ACCOUNT: ${{ env.META_ACCOUNT }}

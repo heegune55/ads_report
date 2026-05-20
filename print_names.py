@@ -1,7 +1,7 @@
 import requests, json, datetime, os, time
 
 META_TOKEN   = os.environ["META_ACCESS_TOKEN"]
-META_ACCOUNT = "act_3431020723842735"
+META_ACCOUNT  = os.environ.get("META_ACCOUNT", "act_3431020723842735")
 SPEND_MIN    = 1_000_000
 
 today = datetime.date.today()
