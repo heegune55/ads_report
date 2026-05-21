@@ -18,6 +18,7 @@ on:
           - printnames
           - archbalance
           - liveanalysis
+          - promo
       account:
         description: '광고 계정'
         required: false
@@ -94,6 +95,14 @@ jobs:
       - name: 아치밸런스 소재 분석
         if: ${{ inputs.type == 'archbalance' }}
         run: python arch_balance_report.py
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          META_ACCOUNT: ${{ env.META_ACCOUNT }}
+
+      - name: 프로모션 소재 분석
+        if: ${{ inputs.type == 'promo' }}
+        run: python promo_report.py
         env:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
