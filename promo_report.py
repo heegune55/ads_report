@@ -5,7 +5,8 @@ META_ACCOUNT  = os.environ.get("META_ACCOUNT", "act_3431020723842735")
 NOTION_TOKEN  = os.environ["NOTION_TOKEN"]
 NOTION_PARENT = "12fb99f5082080e5a78ac8591f0fbae4"
 KEYWORD       = "프로모션"
-SPEND_MIN     = 100_000
+SPEND_MIN     = 1_000_000
+ROAS_MIN      = 2.0
 
 today = datetime.date.today()
 since = today - datetime.timedelta(days=180)
@@ -93,16 +94,14 @@ if not ads:
 
 # ── 정렬 및 분류 ──────────────────────────────────────────────────────────────
 ads_sorted = sorted(ads, key=lambda a: a["roas"] if a["roas"] else -1, reverse=True)
-good   = [a for a in ads_sorted if a["roas"] and a["roas"] >= 1.8]
-normal = [a for a in ads_sorted if a["roas"] and 1.0 <= a["roas"] < 1.8]
-poor   = [a for a in ads_sorted if not a["roas"] or a["roas"] < 1.0]
+qualified  = [a for a in ads_sorted if a["roas"] and a["roas"] >= ROAS_MIN]
 
 total_spend = sum(a["spend"] for a in ads)
 total_pv    = sum(a["pv"] for a in ads)
 total_pur   = sum(a["pur"] for a in ads)
 blend_roas  = total_pv / total_spend if total_spend else 0
 
-print(f"  -> ROAS 180%+: {len(good)}개 / 100~180%: {len(normal)}개 / 미달·전환없음: {len(poor)}개")
+print(f"  -> ROAS {ROAS_MIN*100:.0f}%+ 해당 소재: {len(qualified)}개")
 
 # ── Notion 블록 ───────────────────────────────────────────────────────────────
 def h1(c):  return {"object":"block","type":"heading_1","heading_1":{"rich_text":[{"type":"text","text":{"content":str(c)[:2000]}}]}}
@@ -134,29 +133,21 @@ HEADERS = ["소재명", "지출", "ROAS", "OB-CTR", "CPM", "구매수"]
 period  = f"{since.strftime('%Y.%m.%d')} ~ {until.strftime('%Y.%m.%d')}"
 
 blocks = [
-    h1("🎯 KB 프로모션 소재 성과 리스트"),
+    h1("🎯 KB 프로모션 소재 — ROAS 200%+ / 지출 100만↑"),
     co(
-        f"분석 기간: {period}  |  소재: {len(ads)}개  |  "
-        f"합산 지출: ₩{total_spend:,.0f}  |  블렌드 ROAS: {blend_roas:.2f}x  |  총 구매: {total_pur:.0f}건",
+        f"분석 기간: {period}  |  조건: 지출 ₩1,000,000↑ + ROAS 200%↑  |  "
+        f"해당 소재: {len(qualified)}개  |  블렌드 ROAS: {blend_roas:.2f}x  |  총 구매: {total_pur:.0f}건",
         "📌"
     ),
     div(),
 ]
 
-if good:
-    blocks.append(h2(f"✅ ROAS 180% 이상 ({len(good)}개)"))
-    blocks.append(tbl(HEADERS, make_rows(good)))
+if qualified:
+    blocks.append(h2(f"✅ ROAS 200% 이상 소재 ({len(qualified)}개) — ROAS 높은 순"))
+    blocks.append(tbl(HEADERS, make_rows(qualified)))
     blocks.append(div())
-
-if normal:
-    blocks.append(h2(f"🟡 ROAS 100~180% ({len(normal)}개)"))
-    blocks.append(tbl(HEADERS, make_rows(normal)))
-    blocks.append(div())
-
-if poor:
-    blocks.append(h2(f"🔴 ROAS 100% 미만 / 전환없음 ({len(poor)}개)"))
-    blocks.append(tbl(HEADERS, make_rows(poor)))
-    blocks.append(div())
+else:
+    blocks.append({"object":"block","type":"paragraph","paragraph":{"rich_text":[{"type":"text","text":{"content":"해당 조건의 소재가 없습니다."}}]}})
 
 # ── Notion 업로드 ─────────────────────────────────────────────────────────────
 print("[2/3] Notion 페이지 생성...")
