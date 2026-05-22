@@ -19,6 +19,7 @@ on:
           - archbalance
           - liveanalysis
           - promo
+          - retro
       account:
         description: '광고 계정'
         required: false
@@ -99,6 +100,16 @@ jobs:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           META_ACCOUNT: ${{ env.META_ACCOUNT }}
+
+      - name: 월말 회고
+        if: ${{ inputs.type == 'retro' }}
+        run: python monthly_retro.py
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          META_ACCOUNT: ${{ env.META_ACCOUNT }}
+          PERSON_FILTER: ${{ inputs.person || 'KB' }}
+          RETRO_SINCE: ${{ inputs.date || '2026-05-01' }}
 
       - name: 프로모션 소재 분석
         if: ${{ inputs.type == 'promo' }}
