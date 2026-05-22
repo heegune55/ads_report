@@ -20,6 +20,7 @@ on:
           - liveanalysis
           - promo
           - retro
+          - kpt
       account:
         description: '광고 계정'
         required: false
@@ -126,3 +127,9 @@ jobs:
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           META_ACCOUNT: ${{ env.META_ACCOUNT }}
+
+      - name: KPT 회고 업로드
+        if: ${{ inputs.type == 'kpt' }}
+        run: python kpt_retro.py
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
