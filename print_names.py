@@ -2,13 +2,12 @@ import requests, json, datetime, os, time
 
 META_TOKEN   = os.environ["META_ACCESS_TOKEN"]
 META_ACCOUNT  = os.environ.get("META_ACCOUNT", "act_3431020723842735")
-SPEND_MIN    = 1_000_000
+SPEND_MIN    = 0
 
-today = datetime.date.today()
-since = today - datetime.timedelta(days=180)
-until = today - datetime.timedelta(days=1)
+since = datetime.date(2026, 5, 1)
+until = datetime.date(2026, 5, 27)
 
-FIELDS = "ad_name,spend,purchase_roas"
+FIELDS = "ad_name,spend"
 
 def api_get(url, params=None, retries=5):
     for attempt in range(retries):
@@ -38,26 +37,13 @@ while True:
     if not nxt:
         break
 
-ads = []
-for ad in ads_raw:
-    name = ad.get("ad_name", "")
-    if "KB" not in name:
-        continue
-    spd  = float(ad.get("spend", 0) or 0)
-    if spd < SPEND_MIN:
-        continue
-    rl   = ad.get("purchase_roas", [])
-    roas = float(rl[0].get("value", 0)) if rl else None
-    ads.append({"name": name, "spend": spd, "roas": roas})
+names = sorted(set(
+    r["ad_name"] for r in ads_raw
+    if "KB" in r.get("ad_name", "") and float(r.get("spend", 0) or 0) > 0
+))
 
-ads_sorted = sorted(ads, key=lambda a: a["roas"] if a["roas"] else -1, reverse=True)
-
-print(f"\n{'='*80}")
-print(f"KB 소재 (지출 ₩100만↑) 전체 {len(ads_sorted)}개 — ROAS 높은 순")
-print(f"{'='*80}")
-for i, a in enumerate(ads_sorted, 1):
-    roas_str = f"ROAS {a['roas']:.2f}x" if a["roas"] else "전환없음"
-    marker = " ★" if a["roas"] and a["roas"] >= 1.8 else ""
-    print(f"{i:2d}. [{roas_str}] ₩{a['spend']:>12,.0f}  |  {a['name']}{marker}")
-print(f"{'='*80}")
-print(f"★ = ROAS 180% 이상")
+print(f"\nKB 소재명 전체 ({len(names)}개):")
+print("=" * 80)
+for n in names:
+    print(n)
+print("=" * 80)
