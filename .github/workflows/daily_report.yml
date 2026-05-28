@@ -21,6 +21,7 @@ on:
           - promo
           - retro
           - kpt
+          - productreport
       account:
         description: '광고 계정'
         required: false
@@ -133,3 +134,14 @@ jobs:
         run: python kpt_retro.py
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+
+      - name: 제품별 전체 성과 보고서
+        if: ${{ inputs.type == 'productreport' }}
+        run: python product_report.py
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          META_ACCOUNT: ${{ env.META_ACCOUNT }}
+          PERSON_FILTER: ${{ inputs.person || 'KB' }}
+          REPORT_SINCE: ${{ inputs.date || '2026-05-01' }}
+          REPORT_UNTIL: "2026-05-27"
