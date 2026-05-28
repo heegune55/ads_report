@@ -17,37 +17,18 @@ FIELDS = ",".join([
 ])
 
 # ── 제품명 추출 ────────────────────────────────────────────────────────────────
-# 소재명에서 KB 다음에 오는 실제 제품명 토큰을 추출
-# "N안", "인트로N" 등 소재 버전 번호는 건너뜀
-SKIP_TOKENS = {
-    "kb", "image", "img", "video", "vid", "reel", "banner", "feed",
-    "story", "카피", "소재", "이미지", "영상", "숏폼", "배너",
-    "a", "b", "c", "cta", "test", "테스트", "신규", "재집행", "수정",
-    "프로모션", "promotion",
-}
-DATE_PAT    = re.compile(r"^\d{4,8}$|^\d{2}[-/]\d{2}$")
-VERSION_PAT = re.compile(r"^\d+안$|^인트로\d*$|^v\d+$|^\d+$|^[a-zA-Z]\d*$")
+# 소재명 규칙: YYMMDD_제품명_소재유형_..._KB_버전
+# → 첫 토큰이 6자리 날짜면 두 번째 토큰이 제품명
+DATE6_PAT = re.compile(r"^\d{6}$")
 
 def extract_product(name: str) -> str:
-    raw   = name.lower()
-    parts = re.split(r"[\s_\-|/·]+", raw)
-    kb_idx = next((i for i, p in enumerate(parts) if p == "kb"), -1)
-    start  = kb_idx + 1 if kb_idx >= 0 else 0
-    orig_parts = re.split(r"[\s_\-|/·]+", name)
-    for i, p in enumerate(parts[start:], start):
-        p_clean = p.strip()
-        if not p_clean:
-            continue
-        if p_clean in SKIP_TOKENS:
-            continue
-        if DATE_PAT.match(p_clean):
-            continue
-        if VERSION_PAT.match(p_clean):   # N안, 인트로N, v1, BO 등 버전 토큰 건너뜀
-            continue
-        # 원본 케이스로 복원
-        if i < len(orig_parts) and orig_parts[i].lower() == p_clean:
-            return orig_parts[i]
-        return p_clean
+    parts = name.split("_")
+    if len(parts) >= 2 and DATE6_PAT.match(parts[0]):
+        return parts[1]   # YYMMDD_제품명_...
+    # 날짜 없는 구형 네이밍: KB 앞 토큰에서 추출
+    for i, p in enumerate(parts):
+        if p.upper() == "KB" and i >= 1:
+            return parts[i - 1]
     return "기타"
 
 # ── API 호출 ──────────────────────────────────────────────────────────────────
