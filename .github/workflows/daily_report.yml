@@ -22,6 +22,7 @@ on:
           - retro
           - kpt
           - productreport
+          - hipup
       account:
         description: '광고 계정'
         required: false
@@ -145,3 +146,10 @@ jobs:
           PERSON_FILTER: ${{ inputs.person || 'KB' }}
           REPORT_SINCE: ${{ inputs.date || '2026-05-01' }}
           REPORT_UNTIL: "2026-05-27"
+
+      - name: 힙업 소재 분석
+        if: ${{ inputs.type == 'hipup' }}
+        run: python hipup_analysis.py
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          CSV_PATH: hipup_data.csv
