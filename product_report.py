@@ -17,30 +17,36 @@ FIELDS = ",".join([
 ])
 
 # ── 제품명 추출 ────────────────────────────────────────────────────────────────
-# 소재명에서 KB 다음에 오는 제품 키워드를 추출
+# 소재명에서 KB 다음에 오는 실제 제품명 토큰을 추출
+# "N안", "인트로N" 등 소재 버전 번호는 건너뜀
 SKIP_TOKENS = {
     "kb", "image", "img", "video", "vid", "reel", "banner", "feed",
     "story", "카피", "소재", "이미지", "영상", "숏폼", "배너",
-    "a", "b", "c", "v1", "v2", "v3", "1", "2", "3",
-    "cta", "test", "테스트", "신규", "재집행", "수정",
+    "a", "b", "c", "cta", "test", "테스트", "신규", "재집행", "수정",
+    "프로모션", "promotion",
 }
-DATE_PAT = re.compile(r"^\d{4,8}$|^\d{2}[-/]\d{2}$")
+DATE_PAT    = re.compile(r"^\d{4,8}$|^\d{2}[-/]\d{2}$")
+VERSION_PAT = re.compile(r"^\d+안$|^인트로\d*$|^v\d+$|^\d+$|^[a-zA-Z]\d*$")
 
 def extract_product(name: str) -> str:
-    # 구분자로 분리 후 KB 이후 첫 의미있는 토큰 사용
-    raw = name.lower()
+    raw   = name.lower()
     parts = re.split(r"[\s_\-|/·]+", raw)
     kb_idx = next((i for i, p in enumerate(parts) if p == "kb"), -1)
-    start = kb_idx + 1 if kb_idx >= 0 else 0
-    for p in parts[start:]:
+    start  = kb_idx + 1 if kb_idx >= 0 else 0
+    orig_parts = re.split(r"[\s_\-|/·]+", name)
+    for i, p in enumerate(parts[start:], start):
         p_clean = p.strip()
-        if not p_clean or p_clean in SKIP_TOKENS or DATE_PAT.match(p_clean):
+        if not p_clean:
             continue
-        # 원본 대소문자로 복원
-        orig_parts = re.split(r"[\s_\-|/·]+", name)
-        for op in orig_parts:
-            if op.lower() == p_clean:
-                return op
+        if p_clean in SKIP_TOKENS:
+            continue
+        if DATE_PAT.match(p_clean):
+            continue
+        if VERSION_PAT.match(p_clean):   # N안, 인트로N, v1, BO 등 버전 토큰 건너뜀
+            continue
+        # 원본 케이스로 복원
+        if i < len(orig_parts) and orig_parts[i].lower() == p_clean:
+            return orig_parts[i]
         return p_clean
     return "기타"
 
